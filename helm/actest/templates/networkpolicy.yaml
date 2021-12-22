@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+  name: actest-metrics
+  namespace: default
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - port: metrics-port
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: actest
+  policyTypes:
+  - Ingress

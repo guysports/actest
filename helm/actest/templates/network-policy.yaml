@@ -1,0 +1,41 @@
+{{ $namespace := .Values.global.ef.namespace | default "default" }}
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: {{ .Chart.Name }}-ingress
+  namespace: "{{ $namespace }}"
+spec:
+  policyTypes:
+    - Ingress
+  podSelector: {}
+---
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: {{ .Chart.Name }}-egress
+  namespace: "{{ $namespace }}"
+spec:
+  policyTypes:
+    - Egress
+  podSelector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  egress:
+    {{- if .Values.global.ef.masterIPs }}
+    - to:
+      {{- range .Values.global.ef.masterIPs }}
+      - ipBlock:
+          cidr: {{ . }}/32
+      {{- end }}
+      ports:
+      - protocol: TCP
+    {{- end }}
+    - to:
+      ports:
+      - protocol: TCP
+        port: 443
+      - protocol: TCP
+        port: 53
+      - protocol: UDP
+        port: 53
+---

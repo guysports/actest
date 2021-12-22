@@ -1,0 +1,103 @@
+{{ $namespace := .Values.global.ef.namespace | default "default" }}
+{{- $envType := .Values.global.ef.envType | default "bluemix" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: "{{ $namespace }}"
+  labels:
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    app: {{ .Chart.Name }}
+    name: "access-controller"
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      # Allow rolling to affinity rule implementation
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      namespace: "{{ $namespace }}"
+      labels:
+        app: {{ .Chart.Name }}
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.istio.io/merge-metrics: 'true'
+        sidecar.istio.io/inject: 'false'
+    spec:
+      imagePullSecrets:
+      - name: mhub-registry-secret
+      serviceAccountName: kube-audit-logger
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "{{ .Chart.Name }}"
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - "{{ .Chart.Name }}"
+              topologyKey: failure-domain.beta.kubernetes.io/zone
+      {{ if eq $envType "bluemix" }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: mhub.ibm.com/layer
+                operator: In
+                values:
+                - management
+                - control
+      {{end}}
+      containers:
+      - image: us.icr.io/mhub/actest:1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9090
+          name: metrics-port
+          protocol: TCP
+        name: {{ .Chart.Name }}
+        securityContext:
+          privileged: false
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+             drop:
+             - all
+        resources:
+          requests:
+            memory: {{ .Values.constraints.reqmem }}
+            cpu: {{ .Values.constraints.reqcpu | default "0.01" }}
+          limits:
+            memory: {{ .Values.constraints.limmem }}
+            cpu: {{ .Values.constraints.limcpu | default "0.02" }}
+        env:
+          - name: NAMESPACE
+            value: "{{ $namespace }}"
+      restartPolicy: Always
+      # hostAliases:
+      # - hostnames:
+      #   - iam.cloud.ibm.com
+      #   ip: 104.115.118.57
+      # - hostnames:
+      #   - iam.cloud.ibm.com
+      #   ip: 104.95.59.93
+      # - hostnames:
+      #   - iam.cloud.ibm.com
+      #   ip: 72.247.204.160
